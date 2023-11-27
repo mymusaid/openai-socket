@@ -2,7 +2,7 @@
 
 A wrapper for the OpenAI API using sockets.
 
-[![npm version](https://img.shields.io/npm/v/@musaid.qa/openai-socket.svg)](https://www.npmjs.com/package/openai-socket)
+[![npm version](https://img.shields.io/npm/v/@musaid.qa/openai-socket.svg)](https://www.npmjs.com/package/@musaid.qa/openai-socket)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 ## Installation
