@@ -1,7 +1,7 @@
 {
-  "name": "@mymusaid/openai-socket",
+  "name": "@musaid.qa/openai-socket",
   "version": "0.0.1",
-  "description": "OpenAI API wrapper using sockets",
+  "description": "A wrapper for the OpenAI API using sockets",
   "author": "Mohamed Ali",
   "license": "MIT",
   "main": "dist/index.js",
@@ -36,5 +36,9 @@
   },
   "bugs": {
     "url": "https://github.com/mymusaid/openai-socket/issues"
+  },
+  "dependencies": {
+    "openai": "^4.20.0",
+    "socket.io": "^4.7.2"
   }
 }
