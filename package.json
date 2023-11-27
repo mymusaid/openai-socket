@@ -1,0 +1,40 @@
+{
+  "name": "@mymusaid/openai-socket",
+  "version": "0.0.1",
+  "description": "OpenAI API wrapper using sockets",
+  "author": "Mohamed Ali",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "clean": "rimraf dist",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "build": "run-s clean tsc",
+    "tsc": "tsc -p ."
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "devDependencies": {
+    "@types/node": "*",
+    "@typescript-eslint/eslint-plugin": "^6.12.0",
+    "@typescript-eslint/parser": "^6.12.0",
+    "eslint": "^8.54.0",
+    "eslint-plugin-import": "^2.29.0",
+    "eslint-plugin-jsdoc": "^46.9.0",
+    "eslint-plugin-prefer-arrow": "^1.2.3",
+    "npm-run-all": "^4.1.5",
+    "prettier": "^2.2.1",
+    "rimraf": "^3.0.2",
+    "ts-node": "^9.1.1",
+    "typescript": "^4.8.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mymusaid/openai-socket.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mymusaid/openai-socket/issues"
+  }
+}
