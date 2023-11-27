@@ -17,7 +17,7 @@
     "build": "run-s clean tsc",
     "tsc": "tsc -p .",
     "generate:docs": "typedoc --plugin @mxssfd/typedoc-theme --theme my-theme --out docs src/index.ts",
-    "publish": "yarn build && npm publish --access public"
+    "package:publish": "yarn build && npm publish --access public"
   },
   "files": [
     "dist",
