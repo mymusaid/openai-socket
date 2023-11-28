@@ -1,6 +1,6 @@
 {
   "name": "@musaid.qa/openai-socket",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A wrapper for the OpenAI API using sockets",
   "author": "Mohamed Ali <m.ali@mymusaid.com>",
   "keywords": [
