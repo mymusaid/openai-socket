@@ -71,7 +71,7 @@ client.on('connect', () => {
 
 ```
 
-For more see [basic example](/src/examples/basic/) or [Docs](https://mymusaid.github.io/openai-socket)
+For more see [basic example](/src/examples/basic/) or [Docs](https://openai-socket.docs.mymusaid.com)
 
 ## License
 
