@@ -1,90 +1,32 @@
-import { Socket, Server } from 'socket.io';
-import { ClientOptions, OpenAI } from 'openai';
+import OpenAI from 'openai';
+import { Server } from 'socket.io';
 import {
-  ChatCompletionSnapshot,
-  ChatCompletionStreamParams,
-} from 'openai/lib/ChatCompletionStream';
-import {
-  ChatCompletion,
-  ChatCompletionChunk,
-  ChatCompletionMessage,
-  ChatCompletionMessageParam,
-  CompletionUsage,
-} from 'openai/resources';
-import { OpenAIError, APIUserAbortError } from 'openai/error';
-export type Options = {
-  verbose: boolean;
-  client?: ClientOptions;
-  chat: Omit<ChatCompletionStreamParams, 'messages'>;
-  initMessages: ChatCompletionMessageParam[];
-};
+  Client,
+  ChatCompletionEvents,
+  Options,
+  Message,
+  ClientOptions,
+  EmitEvents,
+  ListenEvents,
+  EventsMap,
+} from './types';
 
-export interface ChatCompletionEvents {
-  content: (contentDelta: string, contentSnapshot: string) => void;
-  chunk: (chunk: ChatCompletionChunk, snapshot: ChatCompletionSnapshot) => void;
-  connect: () => void;
-  functionCall: (functionCall: ChatCompletionMessage.FunctionCall) => void;
-  message: (message: ChatCompletionMessageParam) => void;
-  chatCompletion: (completion: ChatCompletion) => void;
-  finalContent: (contentSnapshot: string) => void;
-  finalMessage: (message: ChatCompletionMessageParam) => void;
-  finalChatCompletion: (completion: ChatCompletion) => void;
-  finalFunctionCall: (functionCall: ChatCompletionMessage.FunctionCall) => void;
-  functionCallResult: (content: string) => void;
-  finalFunctionCallResult: (content: string) => void;
-  error: (error: OpenAIError) => void;
-  abort: (error: APIUserAbortError) => void;
-  end: () => void;
-  totalUsage: (usage: CompletionUsage) => void;
-}
-
-export type EmitEvents = {
-  'new-message': (message: string) => void;
-} & ChatCompletionEvents;
-
-export type ListenEvents = {
-  'new-message': (message: string) => void;
-};
-
-export type CustomSocket = Socket<ListenEvents, EmitEvents>;
-
-export class OpenAISocket {
+class OpenAISocket {
   /**
    * Socket clients
    */
-  public clients: Map<string, CustomSocket> = new Map<string, CustomSocket>();
+  public clients: Map<string, Client> = new Map<string, Client>();
 
   /**
    * History of messages for each socket client
    */
-  public messages: Map<string, ChatCompletionMessageParam[]> = new Map<
-    string,
-    ChatCompletionMessageParam[]
-  >();
+  public messages: Map<string, Message[]> = new Map<string, Message[]>();
 
   /**
    *  OpenAI official client
    */
   public openai: OpenAI;
 
-  /**
-   * List of events to lisent for OpenAI.beta.chat.completions.stream
-   */
-  public static eventsToListen: (keyof ChatCompletionEvents)[] = [
-    'abort',
-    'chatCompletion',
-    'chunk',
-    'content',
-    'end',
-    'error',
-    'finalChatCompletion',
-    'finalContent',
-    'finalFunctionCall',
-    'finalFunctionCallResult',
-    'finalMessage',
-    'totalUsage',
-    'message',
-  ];
 
   /**
    * Constructor for OpenAISocket
@@ -102,58 +44,54 @@ export class OpenAISocket {
     },
   ) {
     this.openai = new OpenAI(this.options.client);
-    io.on('connection', (socket: CustomSocket) => {
-      this.registerClient(socket);
-      this.registerEvents(socket);
+    io.on('connection', (client: Client) => {
+      const { id } = client;
+      client.data.chat = this.options.chat;
+      client.data.initMessages = this.options.initMessages;
+      this.clients.set(id, client);
+      this.messages.set(id, []);
+      this.logger(`Client connected: ${id}`);
+      client.on('disconnect', () => this.onDisconnect(client));
+      client.on('new-message', (message) => this.onNewMessage(client, message));
+      client.on('set-options', (options) => {
+        if (options.chat) client.data.chat = options.chat;
+        if (options.initMessages)
+          client.data.initMessages = options.initMessages;
+      });
+
+      client.on('abort', () => {
+        if (client.data.currentChatStream) {
+          client.data.currentChatStream.controller.abort();
+          client.data.currentChatStream = undefined;
+        }
+      });
     });
   }
 
   /**
-   * Register a new socket client.
-   * @param {CustomSocket} socket - The client socket object.
-   * @returns {void}
+   * Handles a new message received from a client.
+   *
+   * @param {Client} client - The client object.
+   * @param {string | Message} message - The message received from the client.
+   * @return {void} This function does not return anything.
    */
-  registerClient(socket: CustomSocket): void {
+  onNewMessage(client: Client, message: string | Message): void {
+    if (typeof message === 'object') {
+      this.pushToChatHistory(client.id, message);
+    } else {
+      this.pushToChatHistory(client.id, {
+        role: 'user',
+        content: message,
+      });
+    }
+    this.processNewMessage(client);
+  }
+
+  onDisconnect(socket: Client): void {
     const { id } = socket;
-    this.clients.set(id, socket);
-    this.messages.set(id, []);
-    this.logger(`Client connected: ${id}`);
-    socket.on('disconnect', () => {
-      this.clients.delete(id);
-      this.messages.delete(id);
-      this.logger(`Client disconnected: ${id}`);
-    });
-  }
-
-  /**
-   * Register listener for new-message event and push messages to the chat history
-   * for a given socket, and stream the chat completions events to the client.
-   * @param {CustomSocket} socket - The client socket object.
-   * @returns {void}
-   */
-  registerEvents(socket: CustomSocket): void {
-    socket.on('new-message', (message) => {
-      this.pushMessageToHistory(socket.id, message);
-      this.logger(`received message from ${socket.id}`);
-      const chat = this.openai.beta.chat.completions.stream({
-        ...this.options.chat,
-        messages: [
-          ...this.options.initMessages,
-          ...this.getMessages(socket.id),
-        ],
-      });
-
-      OpenAISocket.eventsToListen.forEach((event) => {
-        chat.on(event, (arg: any) => {
-          this.logger(
-            `event ${event} triggered for ${
-              socket.id
-            } with arg: ${JSON.stringify(arg, null, 2)}`,
-          );
-          socket.emit(event, arg);
-        });
-      });
-    });
+    this.logger(`Client disconnected: ${id}`);
+    this.clients.delete(id);
+    this.messages.delete(id);
   }
 
   /**
@@ -173,22 +111,89 @@ export class OpenAISocket {
    * @param {string} message - The message to push.
    * @returns {void}
    */
-  private pushMessageToHistory(socketId: string, message: string): void {
+  private pushToChatHistory(socketId: string, message: Message): void {
     if (this.messages.has(socketId)) {
-      this.logger(`pushing ${message} message to ${socketId} history`);
-      this.messages.get(socketId)?.push({
-        role: 'user',
-        content: message,
-      });
+      this.messages.get(socketId)?.push(message);
     }
   }
 
   /**
    * Gets the chat history for a given socket ID
    * @param {string} socketId - The ID of the socket.
-   * @returns {ChatCompletionMessageParam[]}
+   * @returns {Message[]}
    */
-  private getMessages(socketId: string): ChatCompletionMessageParam[] {
+  private getChatHistory(socketId: string): Message[] {
     return this.messages.get(socketId) ?? [];
   }
+
+  /**
+   * Process a new message from the client.
+   *
+   * @param {Client} client - The client object.
+   * @return {void} This function does not return anything.
+   */
+  private processNewMessage(client: Client): void {
+    const { id, data } = client;
+
+    client.data.currentChatStream = this.openai.beta.chat.completions.stream({
+      ...client.data.chat,
+      messages: [...data.initMessages, ...this.getChatHistory(id)],
+    });
+
+    const streamHandlers = {
+      content: (contentDelta, contentSnapshot) =>
+        client.emit('content', contentDelta, contentSnapshot),
+      finalContent: (contentSnapshot) =>
+        client.emit('finalContent', contentSnapshot),
+      chunk: (chunk, snapshot) => client.emit('chunk', chunk, snapshot),
+      chatCompletion: (completion) => client.emit('chatCompletion', completion),
+      finalChatCompletion: (completion) =>
+        client.emit('finalChatCompletion', completion),
+      message: (message) => client.emit('message', message),
+      finalMessage: (message) => {
+        this.pushToChatHistory(id, message);
+        client.emit('finalMessage', message);
+      },
+      functionCall: (functionCall) => client.emit('functionCall', functionCall),
+      finalFunctionCall: (finalFunctionCall) =>
+        client.emit('finalFunctionCall', finalFunctionCall),
+      functionCallResult: (finalFunctionCallResult) =>
+        client.emit('finalFunctionCallResult', finalFunctionCallResult),
+      finalFunctionCallResult: (finalFunctionCallResult) =>
+        client.emit('finalFunctionCallResult', finalFunctionCallResult),
+      totalUsage: (usage) => client.emit('totalUsage', usage),
+      error: (error) => {
+        client.emit('error', error);
+        client.data.currentChatStream = undefined;
+      },
+      end: () => {
+        client.emit('end');
+        client.data.currentChatStream = undefined;
+      },
+    } as ChatCompletionEvents;
+
+    Object.entries(streamHandlers).forEach(([event, handler]) => {
+      client.data.currentChatStream?.on(
+        event as keyof typeof streamHandlers,
+        (...args: any) => {
+          this.logger(
+            `Event: ${event}, Args: ${JSON.stringify(args, null, 2)}`,
+          );
+          handler(...args);
+        },
+      );
+    });
+  }
 }
+
+export {
+  OpenAISocket,
+  Client,
+  ChatCompletionEvents,
+  Options,
+  Message,
+  ClientOptions,
+  EmitEvents,
+  ListenEvents,
+  EventsMap,
+};
